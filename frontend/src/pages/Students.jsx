@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { lazy, Suspense, useState, useMemo, useEffect, useRef } from "react";
 import {
   Search, Plus, X, GraduationCap, Filter, Mail, CheckCircle2, XCircle,
   Eye, Loader2, Wallet, History, Pencil, Trash2, Clock, AlertTriangle, ScanFace, Receipt,
@@ -8,8 +8,9 @@ import {
 import PageLoader from "../components/PageLoader.jsx";
 import { useTheme, fontDisplay, fontMono } from "../theme.jsx";
 import { studentsApi, attendanceScheduleApi, batchesApi } from "../api/resources.js";
-import FaceCapture from "../components/FaceCapture.jsx";
 import { useHeaderActions } from "../context/HeaderActionsContext.jsx";
+
+const FaceCapture = lazy(() => import("../components/FaceCapture.jsx"));
 
 const pkr = (n) => "₨ " + Number(n || 0).toLocaleString("en-PK");
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -43,7 +44,7 @@ const normalize = (doc) => ({
   course: doc.courseName,
   duration: doc.duration,
   batch: doc.batch || "",
-  joined: doc.joiningDate ? doc.joiningDate.slice(0, 10) : "",
+  joined: doc.joiningDate ? String(doc.joiningDate).slice(0, 10) : "",
   regFee: doc.registrationFee,
   monthlyFee: doc.monthlyFee,
   attendance: doc.attendancePercent,
@@ -53,16 +54,25 @@ const normalize = (doc) => ({
   paymentHistory: doc.paymentHistory || [],
   challans: doc.challans || [],
   faceDescriptor: doc.faceDescriptor || null,
+  faceEnrolled: Boolean(doc.faceEnrolled || doc.faceDescriptor?.length),
   studentPic: doc.studentPic || "",
   fingerprintId: doc.fingerprintId || "",
   active: doc.active !== false,
+});
+
+// Keep the main list lightweight even when a mutation endpoint returns a full
+// student document containing a photo and long attendance history.
+const normalizeList = (doc) => ({
+  ...normalize(doc),
+  attendanceHistory: [],
+  studentPic: "",
 });
 
 const toFormShape = (s) => ({
   name: s.name, email: s.email, phone: s.phone || "", type: s.type, course: s.course, duration: s.duration,
   batch: s.batch || "",
   joined: s.joined, regFee: s.regFee ?? "", monthlyFee: s.monthlyFee ?? "", timing: s.timing,
-  faceDescriptor: s.faceDescriptor || null, studentPic: s.studentPic || "",
+  faceDescriptor: s.faceDescriptor || null, faceEnrolled: Boolean(s.faceEnrolled || s.faceDescriptor?.length), studentPic: s.studentPic || "",
   fingerprintId: s.fingerprintId || "",
 });
 
@@ -287,6 +297,7 @@ export default function Students() {
   // View modal (challans + payment history, read-only)
   const [viewTarget, setViewTarget] = useState(null);
   const [detailTab, setDetailTab] = useState("challans");
+  const [detailLoading, setDetailLoading] = useState(false);
 
   // Manual attendance — now backed entirely by the server (attendanceHistory),
   // no localStorage.
@@ -439,19 +450,41 @@ export default function Students() {
   };
 
   const loadStudents = () => {
-    Promise.all([
-      studentsApi.list(),
-      batchesApi.list()
-    ])
-      .then(([docs, batchList]) => {
-        setStudents(docs.map(normalize));
-        setBatches(batchList);
-      })
+    setLoading(true);
+
+    // Render the students as soon as their request completes. Batch options
+    // are auxiliary UI data and must not block the whole page behind them.
+    studentsApi.list()
+      .then((docs) => setStudents(docs.map(normalizeList)))
       .catch((err) => setToast({ message: err.message, tone: "error" }))
       .finally(() => setLoading(false));
+
+    batchesApi.list()
+      .then((batchList) => setBatches(batchList))
+      .catch((err) => setToast({ message: err.message, tone: "error" }));
   };
 
   useEffect(() => { loadStudents(); }, []);
+
+  const fetchStudentDetail = async (student) => {
+    setDetailLoading(true);
+    try {
+      return normalize(await studentsApi.get(student.id));
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const openStudentView = async (student) => {
+    setViewTarget(student);
+    setDetailTab("challans");
+    try {
+      setViewTarget(await fetchStudentDetail(student));
+    } catch (err) {
+      setViewTarget(null);
+      setToast({ message: err.message, tone: "error" });
+    }
+  };
 
   useEffect(() => {
     if (!toast) return;
@@ -608,7 +641,7 @@ export default function Students() {
         studentPic: form.studentPic || "",
         fingerprintId: form.fingerprintId || undefined,
       });
-      setStudents((prev) => [normalize(doc), ...prev]);
+      setStudents((prev) => [normalizeList(doc), ...prev]);
       setForm(emptyForm);
       setModalOpen(false);
     } catch (err) {
@@ -619,7 +652,15 @@ export default function Students() {
     }
   };
 
-  const openEdit = (s) => { setEditTarget(s); setEditForm(toFormShape(s)); };
+  const openEdit = async (s) => {
+    try {
+      const full = await fetchStudentDetail(s);
+      setEditTarget(full);
+      setEditForm(toFormShape(full));
+    } catch (err) {
+      setToast({ message: err.message, tone: "error" });
+    }
+  };
   const handleEditSubmit = async (e) => {
     e.preventDefault();
     if (!editTarget) return;
@@ -641,7 +682,7 @@ export default function Students() {
         studentPic: editForm.studentPic || "",
         fingerprintId: editForm.fingerprintId || undefined,
       });
-      setStudents((prev) => prev.map((s) => (s.id === doc._id ? normalize(doc) : s)));
+      setStudents((prev) => prev.map((s) => (s.id === doc._id ? normalizeList(doc) : s)));
       setEditTarget(null);
     } catch (err) {
       setToast({ message: err.message, tone: "error" });
@@ -673,7 +714,7 @@ export default function Students() {
     try {
       const doc = await studentsApi.removeChallan(deleteChallanTarget.student.id, deleteChallanTarget.challan._id);
       const updated = normalize(doc);
-      setStudents((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      setStudents((prev) => prev.map((s) => (s.id === updated.id ? normalizeList(updated) : s)));
       if (viewTarget?.id === updated.id) setViewTarget(updated);
       if (paymentTarget?.id === updated.id) setPaymentTarget(updated);
       setToast({ message: "Challan deleted.", tone: "success" });
@@ -706,7 +747,7 @@ export default function Students() {
         amount: amt,
       });
       const updated = normalize(doc);
-      setStudents((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      setStudents((prev) => prev.map((s) => (s.id === updated.id ? normalizeList(updated) : s)));
       if (viewTarget?.id === updated.id) setViewTarget(updated);
       setToast({ message: `Chalan generated for ${updated.name} — ${pkr(amt)} · ${challanForm.month}.`, tone: "success" });
       setChallanTarget(null);
@@ -726,7 +767,7 @@ export default function Students() {
     try {
       const doc = await studentsApi.removePayment(deletePaymentTarget.student.id, deletePaymentTarget.payment._id);
       const updated = normalize(doc);
-      setStudents((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      setStudents((prev) => prev.map((s) => (s.id === updated.id ? normalizeList(updated) : s)));
       if (viewTarget?.id === updated.id) setViewTarget(updated);
       if (paymentTarget?.id === updated.id) setPaymentTarget(updated);
       setToast({ message: "Payment removed.", tone: "success" });
@@ -738,14 +779,19 @@ export default function Students() {
     }
   };
 
-  const openPayments = (s) => {
-    setPaymentTarget(s);
-    const pending = (s.challans || []).filter((c) => c.status !== "paid");
+  const openPayments = async (s) => {
+    try {
+      const full = await fetchStudentDetail(s);
+      setPaymentTarget(full);
+      const pending = (full.challans || []).filter((c) => c.status !== "paid");
     const first = pending[0];
     setSelectedChallanId(first ? first._id : "");
-    setPayAmount(first ? String(remainingForChallan(s, first)) : "");
-    setPayNote("");
-    setPayDate(todayStr());
+    setPayAmount(first ? String(remainingForChallan(full, first)) : "");
+      setPayNote("");
+      setPayDate(todayStr());
+    } catch (err) {
+      setToast({ message: err.message, tone: "error" });
+    }
   };
 
   const onSelectChallan = (challanId) => {
@@ -772,7 +818,7 @@ export default function Students() {
         challanId: selectedChallanId,
       });
       const updated = normalize(doc);
-      setStudents((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      setStudents((prev) => prev.map((s) => (s.id === updated.id ? normalizeList(updated) : s)));
       setPaymentTarget(updated);
       if (viewTarget?.id === updated.id) setViewTarget(updated);
 
@@ -800,7 +846,7 @@ export default function Students() {
     try {
       const doc = await studentsApi.update(student.id, { active: nextActive });
       const updated = normalize(doc);
-      setStudents((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      setStudents((prev) => prev.map((s) => (s.id === updated.id ? normalizeList(updated) : s)));
       if (viewTarget?.id === updated.id) setViewTarget(updated);
       setDeactivateTarget(null);
     } catch (err) {
@@ -810,12 +856,17 @@ export default function Students() {
     }
   };
 
-  const openAttendance = (student) => {
-    setAttendanceTarget(student);
-    setAttendanceDate(todayStr());
-    setAttendanceStatus("present");
-    setAttendanceNote("");
-    setAttendanceMethod("manual");
+  const openAttendance = async (student) => {
+    try {
+      const full = await fetchStudentDetail(student);
+      setAttendanceTarget(full);
+      setAttendanceDate(todayStr());
+      setAttendanceStatus("present");
+      setAttendanceNote("");
+      setAttendanceMethod("manual");
+    } catch (err) {
+      setToast({ message: err.message, tone: "error" });
+    }
   };
 
   // Now actually calls the backend /attendance endpoint instead of writing
@@ -832,7 +883,7 @@ export default function Students() {
         type: attendanceMethod === "fingerprint" ? "fingerprint" : "manual",
       });
       const updated = normalize(doc);
-      setStudents((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      setStudents((prev) => prev.map((s) => (s.id === updated.id ? normalizeList(updated) : s)));
       setAttendanceTarget(updated);
       if (viewTarget?.id === updated.id) setViewTarget(updated);
       const niceDate = new Date(attendanceDate).toLocaleDateString("en-PK", { day: "2-digit", month: "short", year: "numeric" });
@@ -1138,7 +1189,7 @@ export default function Students() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 space-y-3">
         {filtered.length === 0 && <div className="text-center py-12" style={{ color: C.textLow }}>No students found.</div>}
         {filtered.map((s) => (
-          <div key={s.id} className="rounded-xl border-2 p-4 transition-all hover:shadow-md" style={{ borderColor: C.line, background: C.panel }}>
+          <div key={s.id} className="rounded-xl border-2 p-4 transition-all hover:shadow-md" style={{ borderColor: C.line, background: C.panel, contentVisibility: "auto", containIntrinsicSize: "96px" }}>
             <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-4">
               <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0 w-full">
                 <div className="p-3 rounded-lg shrink-0" style={{ background: C.goldSoft }}>
@@ -1160,7 +1211,7 @@ export default function Students() {
                         <Layers size={10} /> {s.batch}
                       </span>
                     )}
-                    {s.faceDescriptor ? (
+                    {s.faceEnrolled ? (
                       <ScanFace size={13} style={{ color: C.teal }} title="Face verified" />
                     ) : (
                       <ScanFace size={13} style={{ color: C.textLow, opacity: 0.4 }} title="Face not verified" />
@@ -1191,7 +1242,7 @@ export default function Students() {
                 </div>
               </div>
               <div className="flex flex-wrap sm:flex-nowrap justify-end gap-1.5 sm:gap-2 shrink-0 w-full sm:w-auto">
-                <button onClick={() => { setViewTarget(s); setDetailTab("challans"); }} title="View" className="p-2 sm:p-2.5 rounded-lg transition-all hover:scale-110" style={{ background: C.panelSoft, color: C.gold }}>
+                <button onClick={() => openStudentView(s)} title="View" className="p-2 sm:p-2.5 rounded-lg transition-all hover:scale-110" style={{ background: C.panelSoft, color: C.gold }}>
                   <Eye size={15} />
                 </button>
                 <button onClick={() => openEdit(s)} title="Edit" className="p-2 sm:p-2.5 rounded-lg transition-all hover:scale-110" style={{ background: C.panelSoft, color: C.gold }}>
@@ -1266,10 +1317,12 @@ export default function Students() {
               </div>
               <Field label="Timing" C={C}><input value={form.timing} onChange={(e) => setForm({ ...form, timing: e.target.value })} className="w-full bg-transparent border-2 rounded-xl px-4 py-3 text-sm transition-colors" style={{ borderColor: C.line, color: C.textHi }} placeholder="9 AM – 5 PM · Mon–Fri" /></Field>
               <Field label="Face verification" C={C}>
-                <FaceCapture
-                  captured={!!form.faceDescriptor}
-                  onCapture={(descriptor, photo) => setForm((f) => ({ ...f, faceDescriptor: descriptor, studentPic: photo }))}
-                />
+                <Suspense fallback={<div className="rounded-xl border-2 p-6 text-center text-xs" style={{ borderColor: C.line, color: C.textLow }}>Loading face capture…</div>}>
+                  <FaceCapture
+                    captured={!!form.faceDescriptor}
+                    onCapture={(descriptor, photo) => setForm((f) => ({ ...f, faceDescriptor: descriptor, studentPic: photo }))}
+                  />
+                </Suspense>
                 <div className="text-[11px] mt-1.5 flex items-center gap-1" style={{ color: form.faceDescriptor ? C.teal : C.textLow }}>
                   <ScanFace size={11} /> {form.faceDescriptor ? "Face captured — will be used for attendance scan-in" : "Optional now — can be captured later from Edit"}
                 </div>
@@ -1519,10 +1572,12 @@ export default function Students() {
             </div>
             <form onSubmit={handleEditSubmit} className="p-6 space-y-5">
               <Field label="Face verification" C={C}>
-                <FaceCapture
-                  captured={!!editForm.faceDescriptor}
-                  onCapture={(descriptor, photo) => setEditForm((f) => ({ ...f, faceDescriptor: descriptor, studentPic: photo }))}
-                />
+                <Suspense fallback={<div className="rounded-xl border-2 p-6 text-center text-xs" style={{ borderColor: C.line, color: C.textLow }}>Loading face capture…</div>}>
+                  <FaceCapture
+                    captured={!!editForm.faceDescriptor}
+                    onCapture={(descriptor, photo) => setEditForm((f) => ({ ...f, faceDescriptor: descriptor, studentPic: photo }))}
+                  />
+                </Suspense>
                 <div className="text-[11px] mt-1.5 flex items-center gap-1" style={{ color: editForm.faceDescriptor ? C.teal : C.rose }}>
                   <ScanFace size={11} /> {editForm.faceDescriptor ? "Face verified — attendance scan will recognize this student" : "Not verified yet — capture a face for scan-in attendance"}
                 </div>

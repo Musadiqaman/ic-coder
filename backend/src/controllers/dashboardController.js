@@ -120,36 +120,16 @@ function computeInOut({ students, employees, teachers, expenses, projects, loans
 }
 
 export const summary = asyncHandler(async (req, res) => {
-  // .select() + .lean(): this endpoint only ever reads a handful of fields
-  // per collection and never mutates/saves these docs, so there's no need
-  // to pay for full documents or Mongoose's document-wrapper overhead
-  // (getters/setters/change-tracking) on every request. On collections with
-  // a lot of students/employees this alone cuts response time noticeably,
-  // especially since it also shrinks how much JSON has to cross the wire
-  // from MongoDB before we even start crunching numbers.
-  const [students, employees, teachers, expenses, projects, loans] = await Promise.all([
-    Student.find().select("courseType batch active paymentHistory.amount paymentHistory.date").lean(),
-    Employee.find().select("paymentHistory.amount paymentHistory.date").lean(),
-    Teacher.find().select("paymentHistory.amount paymentHistory.date").lean(),
-    Expense.find().select("amount date").lean(),
-    Project.find().select("paymentHistory.amount paymentHistory.date").lean(),
-    Loan.find().select("amount createdAt takenDate paymentHistory.amount paymentHistory.date").lean(),
-  ]);
-
-  const data = { students, employees, teachers, expenses, projects, loans };
-  const nowParts = pktDateParts();
-
-  // ---- Selected filter (defaults to "thisMonth") drives both the Cash In /
-  // Cash Out breakdown AND Cash in Hand below. ----
   const filter = ["today", "thisMonth", "lastMonth", "all", "custom"].includes(req.query.filter)
     ? req.query.filter
     : "thisMonth";
   const range = resolveRange(filter, req.query.startDate, req.query.endDate);
+  const nowParts = pktDateParts();
 
-  const filteredInOut = computeInOut(data, range);
-  const cashInHand = filteredInOut.totalIn - filteredInOut.totalOut;
-
-  // ---- Last 6 months cash flow series (unaffected by the filter) ----
+  // The dashboard used to download every payment-history entry from every
+  // collection and then calculate totals in Node. That gets progressively
+  // slower as the database grows and also transfers a lot of data over the
+  // network. MongoDB can aggregate the same sums close to the data.
   const months = Array.from({ length: 6 }).map((_, i) => {
     const parts = shiftMonth(nowParts, 5 - i);
     const label = new Date(parts.y, parts.m, 1).toLocaleString("en-US", { month: "short" });
@@ -157,36 +137,193 @@ export const summary = asyncHandler(async (req, res) => {
     const end = pktMidnightUTC(parts.y, parts.m + 1, 1);
     return { key: monthKey(parts), label, range: { start, end } };
   });
-  const cashFlow = months.map(({ label, range: r }) => {
-    const io = computeInOut(data, r);
-    return { m: label, in: io.totalIn, out: io.totalOut };
-  });
 
-  // ---- Student mix ----
-  const mixOf = (key) => students.filter((s) => s.courseType === key).length;
+  const historyStart = months[0].range.start;
+  const historyEnd = months[months.length - 1].range.end;
+
+  const paymentFacet = (field = "paymentHistory") => {
+    const selectedDate = `${field}.date`;
+    return {
+      selected: [
+        { $unwind: `$${field}` },
+        ...(range.start || range.end
+          ? [{ $match: { [selectedDate]: {
+              ...(range.start ? { $gte: range.start } : {}),
+              ...(range.end ? { $lt: range.end } : {}),
+            } } }]
+          : []),
+        { $group: { _id: null, total: { $sum: `$${field}.amount` } } },
+      ],
+      monthly: [
+        { $unwind: `$${field}` },
+        { $match: { [selectedDate]: { $gte: historyStart, $lt: historyEnd } } },
+        {
+          $group: {
+            _id: {
+              $dateToString: {
+                format: "%Y-%m",
+                date: `$${field}.date`,
+                timezone: "Asia/Karachi",
+              },
+            },
+            total: { $sum: `$${field}.amount` },
+          },
+        },
+      ],
+    };
+  };
+
+  const expenseFacet = {
+    selected: [
+      ...(range.start || range.end
+        ? [{ $match: {
+            date: {
+              ...(range.start ? { $gte: range.start } : {}),
+              ...(range.end ? { $lt: range.end } : {}),
+            },
+          } }]
+        : []),
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ],
+    monthly: [
+      { $match: { date: { $gte: historyStart, $lt: historyEnd } } },
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: "%Y-%m",
+              date: "$date",
+              timezone: "Asia/Karachi",
+            },
+          },
+          total: { $sum: "$amount" },
+        },
+      },
+    ],
+  };
+
+  const loanFacet = {
+    selectedTaken: [
+      { $set: { _loanTakenAt: { $ifNull: ["$takenDate", "$createdAt"] } } },
+      ...(range.start || range.end
+        ? [{ $match: { _loanTakenAt: {
+            ...(range.start ? { $gte: range.start } : {}),
+            ...(range.end ? { $lt: range.end } : {}),
+          } } }]
+        : []),
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ],
+    monthlyTaken: [
+      { $set: { _loanTakenAt: { $ifNull: ["$takenDate", "$createdAt"] } } },
+      { $match: { _loanTakenAt: { $gte: historyStart, $lt: historyEnd } } },
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: "%Y-%m",
+              date: "$_loanTakenAt",
+              timezone: "Asia/Karachi",
+            },
+          },
+          total: { $sum: "$amount" },
+        },
+      },
+    ],
+    selectedReturns: paymentFacet("paymentHistory").selected,
+    monthlyReturns: paymentFacet("paymentHistory").monthly,
+  };
+
+  const [studentAgg, employeeAgg, teacherAgg, expenseAgg, projectAgg, loanAgg] = await Promise.all([
+    Student.aggregate([
+      {
+        $facet: {
+          ...paymentFacet("paymentHistory"),
+          mix: [
+            { $group: { _id: "$courseType", value: { $sum: 1 } } },
+          ],
+          batch: [
+            { $match: { active: true } },
+            {
+              $group: {
+                _id: {
+                  $cond: [
+                    { $or: [{ $eq: ["$batch", null] }, { $eq: ["$batch", ""] }] },
+                    "Unassigned",
+                    "$batch",
+                  ],
+                },
+                value: { $sum: 1 },
+                paid: { $sum: { $cond: [{ $eq: ["$courseType", "paid"] }, 1, 0] } },
+                free: { $sum: { $cond: [{ $eq: ["$courseType", "free"] }, 1, 0] } },
+                workspace: { $sum: { $cond: [{ $eq: ["$courseType", "workspace"] }, 1, 0] } },
+              },
+            },
+          ],
+        },
+      },
+    ]),
+    Employee.aggregate([{ $facet: paymentFacet("paymentHistory") }]),
+    Teacher.aggregate([{ $facet: paymentFacet("paymentHistory") }]),
+    Expense.aggregate([{ $facet: expenseFacet }]),
+    Project.aggregate([{ $facet: paymentFacet("paymentHistory") }]),
+    Loan.aggregate([{ $facet: loanFacet }]),
+  ]);
+
+  const unwrap = (result) => result?.[0] || {};
+  const totalOf = (rows) => Number(rows?.[0]?.total || 0);
+  const monthlyMap = (rows) => Object.fromEntries(
+    (rows || []).map((row) => [row._id, Number(row.total || 0)])
+  );
+
+  const students = unwrap(studentAgg);
+  const employees = unwrap(employeeAgg);
+  const teachers = unwrap(teacherAgg);
+  const expenses = unwrap(expenseAgg);
+  const projects = unwrap(projectAgg);
+  const loans = unwrap(loanAgg);
+
+  const selected = {
+    projectsPaid: totalOf(projects.selected),
+    studentsPaid: totalOf(students.selected),
+    loansTaken: totalOf(loans.selectedTaken),
+    employeeSalaryPaid: totalOf(employees.selected),
+    teacherSalaryPaid: totalOf(teachers.selected),
+    expensesPaid: totalOf(expenses.selected),
+    loanReturn: totalOf(loans.selectedReturns),
+  };
+
+  const totalIn = selected.projectsPaid + selected.studentsPaid + selected.loansTaken;
+  const totalOut = selected.employeeSalaryPaid + selected.teacherSalaryPaid + selected.expensesPaid + selected.loanReturn;
+
+  const studentMonthly = monthlyMap(students.monthly);
+  const projectMonthly = monthlyMap(projects.monthly);
+  const employeeMonthly = monthlyMap(employees.monthly);
+  const teacherMonthly = monthlyMap(teachers.monthly);
+  const expenseMonthly = monthlyMap(expenses.monthly);
+  const loanTakenMonthly = monthlyMap(loans.monthlyTaken);
+  const loanReturnMonthly = monthlyMap(loans.monthlyReturns);
+
+  const cashFlow = months.map(({ key, label }) => ({
+    m: label,
+    in: (projectMonthly[key] || 0) + (studentMonthly[key] || 0) + (loanTakenMonthly[key] || 0),
+    out: (employeeMonthly[key] || 0) + (teacherMonthly[key] || 0) + (expenseMonthly[key] || 0) + (loanReturnMonthly[key] || 0),
+  }));
+
+  const mixCounts = Object.fromEntries((students.mix || []).map((row) => [row._id, Number(row.value || 0)]));
   const studentMix = [
-    { name: "Paid Internship", value: mixOf("paid") },
-    { name: "Workspace", value: mixOf("workspace") },
-    { name: "Free Internship", value: mixOf("free") },
+    { name: "Paid Internship", value: mixCounts.paid || 0 },
+    { name: "Workspace", value: mixCounts.workspace || 0 },
+    { name: "Free Internship", value: mixCounts.free || 0 },
   ];
 
-  // ---- Batch mix (active students grouped by batch) ----
-  // Students with no batch assigned yet are grouped under "Unassigned" so
-  // the total still adds up to activeStudentsCount, but they're sorted last
-  // since they're not a real batch. Sorted by size (largest first) — the
-  // Dashboard bar chart reads top-to-bottom/left-to-right most-populated first.
-  const batchCounts = {};
-  for (const s of students) {
-    if (!s.active) continue;
-    const name = (s.batch || "").trim() || "Unassigned";
-    if (!batchCounts[name]) batchCounts[name] = { value: 0, paid: 0, free: 0, workspace: 0 };
-    batchCounts[name].value += 1;
-    if (s.courseType === "paid") batchCounts[name].paid += 1;
-    else if (s.courseType === "free") batchCounts[name].free += 1;
-    else if (s.courseType === "workspace") batchCounts[name].workspace += 1;
-  }
-  const batchMix = Object.entries(batchCounts)
-    .map(([name, mix]) => ({ name, ...mix }))
+  const batchMix = (students.batch || [])
+    .map((row) => ({
+      name: row._id,
+      value: Number(row.value || 0),
+      paid: Number(row.paid || 0),
+      free: Number(row.free || 0),
+      workspace: Number(row.workspace || 0),
+    }))
     .sort((a, b) => {
       if (a.name === "Unassigned") return 1;
       if (b.name === "Unassigned") return -1;
@@ -199,8 +336,24 @@ export const summary = asyncHandler(async (req, res) => {
       startDate: range.start ? range.start.toISOString() : null,
       endDate: range.end ? range.end.toISOString() : null,
     },
-    cashInHand,
-    inOutBreakdown: filteredInOut,
+    cashInHand: totalIn - totalOut,
+    inOutBreakdown: {
+      in: {
+        projectsPaid: selected.projectsPaid,
+        studentsPaid: selected.studentsPaid,
+        loansTaken: selected.loansTaken,
+        total: totalIn,
+      },
+      out: {
+        employeeSalaryPaid: selected.employeeSalaryPaid,
+        teacherSalaryPaid: selected.teacherSalaryPaid,
+        expensesPaid: selected.expensesPaid,
+        loanReturn: selected.loanReturn,
+        total: totalOut,
+      },
+      totalIn,
+      totalOut,
+    },
     cashFlow,
     studentMix,
     batchMix,

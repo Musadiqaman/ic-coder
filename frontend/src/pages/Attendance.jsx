@@ -39,6 +39,8 @@ export default function Attendance() {
   const [fpBusy, setFpBusy] = useState(false);
   const [fpResult, setFpResult] = useState(null); // { type: 'match'|'nomatch'|'already', name, status }
   const [teachers, setTeachers] = useState([]); // Teachers list for scanning
+  const recognitionPromiseRef = useRef(null);
+  const recognitionLoadedRef = useRef(false);
 
   // Local calendar date (NOT toISOString, which is UTC and rolls over ~5
   // hours late for PKT users — e.g. at 12:19 AM PKT it still returns
@@ -59,9 +61,30 @@ export default function Attendance() {
 
   useEffect(() => {
     loadLog();
-    studentsApi.list().then(setStudents).catch(() => {});
-    teachersApi.list().then(setTeachers).catch(() => {});
   }, []);
+
+  // Recognition data is loaded only when a scan is actually requested.
+  // The attendance page can therefore render the today's log immediately
+  // instead of waiting for all student + teacher biometric records.
+  const ensureRecognitionData = async () => {
+    if (recognitionLoadedRef.current) return { students, teachers };
+    if (!recognitionPromiseRef.current) {
+      recognitionPromiseRef.current = Promise.all([
+        studentsApi.recognition(),
+        teachersApi.recognition(),
+      ])
+        .then(([studentDocs, teacherDocs]) => {
+          setStudents(studentDocs);
+          setTeachers(teacherDocs);
+          recognitionLoadedRef.current = true;
+          return { students: studentDocs, teachers: teacherDocs };
+        })
+        .finally(() => {
+          recognitionPromiseRef.current = null;
+        });
+    }
+    return recognitionPromiseRef.current;
+  };
 
   const stopStream = () => {
     if (streamRef.current) {
@@ -76,8 +99,12 @@ export default function Attendance() {
     setScanResult(null);
     try {
       setCamStage("loading");
-      await loadFaceModels();
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } });
+      // These are independent startup tasks. Starting them together cuts the
+      // perceived camera-start time on a cold browser cache.
+      const [_, stream] = await Promise.all([
+        loadFaceModels(),
+        navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } }),
+      ]);
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -97,10 +124,7 @@ export default function Attendance() {
     setCamStage("scanning");
     setScanResult(null);
     try {
-      const freshStudents = await studentsApi.list().catch(() => students);
-      const freshTeachers = await teachersApi.list().catch(() => teachers);
-      setStudents(freshStudents);
-      setTeachers(freshTeachers);
+      const { students: freshStudents, teachers: freshTeachers } = await ensureRecognitionData();
 
       const detection = await detectFace(videoRef.current);
       if (!detection) {
@@ -184,10 +208,7 @@ export default function Attendance() {
     setFpResult(null);
     setError("");
     try {
-      const freshStudents = await studentsApi.list().catch(() => students);
-      const freshTeachers = await teachersApi.list().catch(() => teachers);
-      setStudents(freshStudents);
-      setTeachers(freshTeachers);
+      const { students: freshStudents, teachers: freshTeachers } = await ensureRecognitionData();
 
       // Check students first
       const student = freshStudents.find((s) => s.fingerprintId && s.fingerprintId === value);

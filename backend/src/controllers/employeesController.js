@@ -32,7 +32,7 @@ function reconcileChallan(employee) {
 
 // GET /api/employees
 export const list = asyncHandler(async (req, res) => {
-  const employees = await Employee.find().sort({ createdAt: -1 });
+  const employees = await Employee.find().sort({ createdAt: -1 }).lean();
   res.json(employees);
 });
 

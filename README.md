@@ -111,4 +111,4 @@ hardened input sanitization / server security beyond Mongoose's built-in validat
 
 ## Separate Vercel deployment
 
-Deploy `frontend/` and `backend/` as two separate Vercel projects. Set frontend `VITE_API_URL` to the full backend `/api` URL. Set backend `CLIENT_ORIGIN` to the exact frontend origin. Production auth uses HttpOnly + Secure + SameSite=None cookies with CORS credentials, and the frontend sends `credentials: include`. Do not use a frontend API rewrite to the backend domain.
+Deploy `frontend/` and `backend/` as two separate Vercel projects. In production, leave `VITE_API_URL` unset so the frontend uses its same-origin `/api` rewrite to the backend. Keep `CLIENT_ORIGIN` configured on the backend for direct/API access as needed. Production auth uses HttpOnly + Secure + SameSite=Lax cookies through the same-origin rewrite, while the frontend still sends `credentials: include`.

@@ -9,6 +9,7 @@ export const authApi = {
 
 export const studentsApi = {
   ...resourceClient("students"),
+  recognition: () => api.get("/students/recognition"),
   addPayment: (id, body) => api.post(`/students/${id}/payments`, body),
   removePayment: (id, paymentId) => api.del(`/students/${id}/payments/${paymentId}`),
   removeChallan: (id, challanId) => api.del(`/students/${id}/challans/${challanId}`),
@@ -35,6 +36,7 @@ export const employeesApi = {
 
 export const teachersApi = {
   ...resourceClient("teachers"),
+  recognition: () => api.get("/teachers/recognition"),
   me: () => api.get("/teachers/me"),
   meAttendance: () => api.get("/teachers/me/attendance"),
   markMeAttendance: (body) => api.post("/teachers/me/attendance", body),

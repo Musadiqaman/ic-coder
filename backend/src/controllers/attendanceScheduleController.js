@@ -30,7 +30,7 @@ export const getSchedule = asyncHandler(async (req, res) => {
 
 // GET /api/attendance-schedule  (all schedules, for the settings screen)
 export const getAllSchedules = asyncHandler(async (req, res) => {
-  const schedules = await AttendanceSchedule.find();
+  const schedules = await AttendanceSchedule.find().lean();
   
   // Group by courseType and personType
   const studentSchedules = COURSE_TYPES.map((ct) => 

@@ -22,7 +22,7 @@ function reconcileMaintenanceChallan(project) {
 
 // GET /api/projects
 export const list = asyncHandler(async (req, res) => {
-  const projects = await Project.find().sort({ createdAt: -1 });
+  const projects = await Project.find().sort({ createdAt: -1 }).lean();
   res.json(projects);
 });
 
