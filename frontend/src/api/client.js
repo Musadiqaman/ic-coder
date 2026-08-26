@@ -8,20 +8,41 @@ function readCookie(name) {
   return match ? decodeURIComponent(match.slice(name.length + 1)) : "";
 }
 
+let csrfToken = null;
+let csrfPromise = null;
+
 async function ensureCsrf(force = false) {
-  if (!force) {
-    const existing = readCookie(CSRF_COOKIE);
-    if (existing) return existing;
+  if (!force && csrfToken) {
+    return csrfToken;
   }
+
   if (!csrfPromise) {
-    csrfPromise = fetch(`${BASE}/auth/csrf`, { credentials: "include", headers: { Accept: "application/json" } })
+    csrfPromise = fetch(`${BASE}/auth/csrf`, {
+      method: "GET",
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+      },
+    })
       .then(async (res) => {
-        if (!res.ok) throw new Error("Unable to initialize security token");
+        if (!res.ok) {
+          throw new Error("Unable to initialize security token");
+        }
+
         const data = await res.json();
-        return data.csrfToken || readCookie(CSRF_COOKIE);
+
+        if (!data.csrfToken) {
+          throw new Error("CSRF token was not returned by server");
+        }
+
+        csrfToken = data.csrfToken;
+        return csrfToken;
       })
-      .finally(() => { csrfPromise = null; });
+      .finally(() => {
+        csrfPromise = null;
+      });
   }
+
   return csrfPromise;
 }
 
