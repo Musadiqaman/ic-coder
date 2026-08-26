@@ -38,7 +38,7 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32 || process.env
 const allowedOrigins = String(process.env.CLIENT_ORIGIN || "").split(",").map(s => s.trim()).filter(Boolean);
 app.use(cors({ origin: (origin, cb) => { if (!origin || allowedOrigins.includes(origin)) return cb(null, true); return cb(new Error("CORS origin not allowed")); }, credentials: true }));
 app.use(securityHeaders);
-app.use(express.json({ limit: "2mb", strict: true }));
+app.use(express.json({ limit: "10mb", strict: true }));
 app.use(cookieParser());
 app.use((req, res, next) => { try { validateJsonComplexity(req.body); rejectMongoOperators(req.body); next(); } catch (err) { next(err); } });
 app.use(verifyCsrf);
