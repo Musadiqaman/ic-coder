@@ -15,9 +15,6 @@ const isProd = process.env.NODE_ENV === "production";
 
 const cookieOpts = {
   httpOnly: true,
-  // Production traffic is proxied through the frontend /api rewrite, so the
-  // session cookie can stay same-site. This is safer than SameSite=None and
-  // avoids cross-origin cookie problems when the browser talks to the SPA.
   sameSite: isProd ? "none" : "lax",
   secure: isProd,
   maxAge: 12 * 60 * 60 * 1000,
