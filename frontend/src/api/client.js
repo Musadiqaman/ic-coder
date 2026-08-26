@@ -1,10 +1,6 @@
 // Thin fetch wrapper with httpOnly session cookies + double-submit CSRF protection.
 
-const BASE = (
-  import.meta.env.DEV
-    ? (import.meta.env.VITE_API_URL || "http://localhost:5000/api")
-    : "/api"
-).replace(/\/$/, "");
+const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/$/, "");
 
 const CSRF_COOKIE = "csrf_token";
 
@@ -22,17 +18,12 @@ function readCookie(name) {
 }
 
 async function ensureCsrf(force = false) {
-  if (!force) {
-    if (csrfToken) return csrfToken;
+  if (!force && csrfToken) {
+    return csrfToken;
+  }
 
-    // The CSRF cookie is intentionally readable (double-submit pattern).
-    // Reuse it immediately when present instead of making an extra GET.
-    const cookieToken = readCookie(CSRF_COOKIE);
-    if (cookieToken) {
-      csrfToken = cookieToken;
-      return csrfToken;
-    }
-  } else {
+  // When forcing a refresh, discard the old token first.
+  if (force) {
     csrfToken = null;
   }
 

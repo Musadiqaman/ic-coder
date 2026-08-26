@@ -3,7 +3,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 
 // GET /api/expenses
 export const list = asyncHandler(async (req, res) => {
-  const expenses = await Expense.find().sort({ createdAt: -1 }).lean();
+  const expenses = await Expense.find().sort({ createdAt: -1 });
   res.json(expenses);
 });
 

@@ -77,7 +77,7 @@ function reconcileChallan(teacher) {
 // GET /api/teachers
 export const list = asyncHandler(async (req, res) => {
   const filter = req.user?.role === "teacher" ? { userId: req.user.id } : {};
-  const teachers = await Teacher.find(filter).populate("userId", "name email role").populate("batchIds", "name description").sort({ createdAt: -1 }).lean();
+  const teachers = await Teacher.find(filter).populate("userId", "name email role").populate("batchIds", "name description").sort({ createdAt: -1 });
   res.json(teachers.map(sanitizeTeacher));
 });
 

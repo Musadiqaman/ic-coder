@@ -49,7 +49,7 @@ export const list = asyncHandler(async (req, res) => {
       { personType: "Student", refId: { $in: students.map((s) => s._id) } },
     ];
   }
-  const items = await Attendance.find(filter).sort({ checkedInAt: -1 }).lean();
+  const items = await Attendance.find(filter).sort({ checkedInAt: -1 });
   res.json(items);
 });
 

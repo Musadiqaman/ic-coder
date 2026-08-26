@@ -15,7 +15,7 @@ const isProd = process.env.NODE_ENV === "production";
 
 const cookieOpts = {
   httpOnly: true,
-  sameSite: "lax",
+  sameSite: isProd ? "none" : "lax",
   secure: isProd,
   maxAge: 12 * 60 * 60 * 1000,
   path: "/",
@@ -128,8 +128,8 @@ export const login = asyncHandler(async (req, res) => {
 
 export const logout = asyncHandler(async (req, res) => {
   if (req.user) await audit(req, "auth.logout", { userId: String(req.user.id) });
-  res.clearCookie("token", { httpOnly: true, sameSite: "lax", secure: isProd, path: "/" });
-  res.clearCookie("csrf_token", { httpOnly: false, sameSite: "lax", secure: isProd, path: "/" });
+  res.clearCookie("token", { httpOnly: true, sameSite: isProd ? "none" : "lax", secure: isProd, path: "/" });
+  res.clearCookie("csrf_token", { httpOnly: false, sameSite: isProd ? "none" : "lax", secure: isProd, path: "/" });
   res.json({ message: "Logged out" });
 });
 

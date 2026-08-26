@@ -5,7 +5,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 
 // GET /api/batches
 export const list = asyncHandler(async (req, res) => {
-  const batches = await Batch.find({ active: true }).sort({ name: 1 }).lean();
+  const batches = await Batch.find({ active: true }).sort({ name: 1 });
   res.json(batches);
 });
 

@@ -58,7 +58,7 @@ async function checkDuplicateContact(email, phone, excludeId) {
   const query = { $or: or };
   if (excludeId) query._id = { $ne: excludeId };
 
-  const existing = await Student.findOne(query).select("name email phone").lean();
+  const existing = await Student.findOne(query).select("name email phone");
   if (!existing) return null;
 
   const field = email && existing.email === String(email).toLowerCase().trim() ? "email" : "phone";
@@ -73,7 +73,7 @@ async function checkDuplicateFace(descriptor, excludeId) {
   const query = { faceDescriptor: { $exists: true, $ne: [] } };
   if (excludeId) query._id = { $ne: excludeId };
 
-  const candidates = await Student.find(query).select("name faceDescriptor").lean();
+  const candidates = await Student.find(query).select("name faceDescriptor");
   for (const c of candidates) {
     if (euclideanDistance(descriptor, c.faceDescriptor) < FACE_MATCH_THRESHOLD) {
       return c;
@@ -237,52 +237,20 @@ async function teacherCanAccessStudent(req, student) {
 
 // GET /api/students
 export const list = asyncHandler(async (req, res) => {
-  // Do NOT generate monthly challans on every page load. The Vercel cron
-  // endpoint handles the monthly job; running it here forced an extra Mongo
-  // read (and sometimes a bulk write) before the actual student list could
-  // even start loading.
+  if (req.user?.role === "admin") {
+    try { await generateMonthlyChallans(); } catch (e) { console.error("Auto challan generation failed:", e.message); }
+  }
   let query = {};
   if (req.user?.role === "teacher") {
     const access = await getTeacherAccess(req);
     if (!access) return res.status(403).json({ message: "Teacher profile is not linked to this account" });
     if (!access.batchNames.length) return res.json([]);
     query = { batch: { $in: access.batchNames }, active: true };
-
-    const students = await Student.find(query)
-      .select("_id name courseName courseType batch active attendancePercent attendanceHistory faceDescriptor fingerprintId")
-      .sort({ createdAt: -1 })
-      .lean();
-
-    return res.json(students.map((s) => ({
-      _id: s._id,
-      name: s.name,
-      courseName: s.courseName,
-      courseType: s.courseType,
-      batch: s.batch,
-      active: s.active,
-      attendancePercent: s.attendancePercent,
-      attendanceHistory: s.attendanceHistory,
-      faceDescriptor: s.faceDescriptor || [],
-      fingerprintId: s.fingerprintId || "",
-    })));
   }
-
-  // The admin list does not need the large photo or attendance-history arrays.
-  // Payment/challan amounts are retained because the page uses them for its
-  // summary cards; full student details are fetched only when a modal opens.
-  const students = await Student.find(query)
-    .select([
-      "_id", "name", "email", "phone", "courseType", "courseName", "duration",
-      "batch", "joiningDate", "registrationFee", "monthlyFee", "active",
-      "attendancePercent", "paymentStatus", "timing", "fingerprintId",
-      "faceDescriptor",
-      "paymentHistory.amount", "paymentHistory.date", "paymentHistory.challanId",
-      "challans.month", "challans.label", "challans.amount", "challans.paidAmount",
-      "challans.status", "challans.generatedOn", "createdAt"
-    ].join(" "))
-    .sort({ createdAt: -1 })
-    .lean();
-
+  const students = await Student.find(query).sort({ createdAt: -1 });
+  if (req.user?.role === "teacher") {
+    return res.json(students.map(s => ({ _id:s._id, name:s.name, courseName:s.courseName, courseType:s.courseType, batch:s.batch, active:s.active, attendancePercent:s.attendancePercent, attendanceHistory:s.attendanceHistory, faceDescriptor:s.faceDescriptor || [], fingerprintId:s.fingerprintId || "" })));
+  }
   res.json(students);
 });
 
