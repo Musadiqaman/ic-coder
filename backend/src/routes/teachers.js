@@ -5,8 +5,6 @@ import { requireRole } from "../middleware/auth.js";
 const router = Router();
 
 // Teacher self-service endpoints must come before /:id
-router.get("/recognition", requireRole("admin", "teacher"), teachersController.recognitionList);
-
 router.get("/me", teachersController.getMe);
 router.get("/me/attendance", teachersController.getMeAttendance);
 router.post("/me/attendance", teachersController.markMeAttendance);

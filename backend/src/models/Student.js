@@ -79,8 +79,6 @@ studentSchema.index({ courseType: 1 }); // Students page course-type filter + Da
 studentSchema.index({ active: 1 }); // used by auto-attendance / active-only listings
 studentSchema.index({ paymentStatus: 1 }); // "due" students lookups
 studentSchema.index({ joiningDate: -1 }); // newest-first sorting / range queries
-studentSchema.index({ createdAt: -1 }); // fast newest-first Students list
-studentSchema.index({ batch: 1, active: 1, createdAt: -1 }); // teacher-scoped Students list
 studentSchema.index({ "paymentHistory.date": 1 }); // Dashboard cash-in-hand date-range filtering
 studentSchema.index({ "attendanceHistory.date": 1 }); // Attendance page date lookups
 studentSchema.index({ batch: 1 }); // Batches breakdown on Dashboard + Students page batch filter

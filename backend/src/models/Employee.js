@@ -43,7 +43,6 @@ const employeeSchema = new mongoose.Schema(
 // --- Indexes ---
 employeeSchema.index({ active: 1 });
 employeeSchema.index({ joiningDate: -1 });
-employeeSchema.index({ createdAt: -1 }); // fast newest-first Employees list
 employeeSchema.index({ "paymentHistory.date": 1 }); // Dashboard cash-out date-range filtering
 
 export default mongoose.model("Employee", employeeSchema);

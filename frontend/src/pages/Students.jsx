@@ -54,7 +54,6 @@ const normalize = (doc) => ({
   paymentHistory: doc.paymentHistory || [],
   challans: doc.challans || [],
   faceDescriptor: doc.faceDescriptor || null,
-  faceEnrolled: Boolean(doc.faceEnrolled || doc.faceDescriptor?.length),
   studentPic: doc.studentPic || "",
   fingerprintId: doc.fingerprintId || "",
   active: doc.active !== false,
@@ -72,7 +71,7 @@ const toFormShape = (s) => ({
   name: s.name, email: s.email, phone: s.phone || "", type: s.type, course: s.course, duration: s.duration,
   batch: s.batch || "",
   joined: s.joined, regFee: s.regFee ?? "", monthlyFee: s.monthlyFee ?? "", timing: s.timing,
-  faceDescriptor: s.faceDescriptor || null, faceEnrolled: Boolean(s.faceEnrolled || s.faceDescriptor?.length), studentPic: s.studentPic || "",
+  faceDescriptor: s.faceDescriptor || null, studentPic: s.studentPic || "",
   fingerprintId: s.fingerprintId || "",
 });
 
@@ -1189,7 +1188,7 @@ export default function Students() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 space-y-3">
         {filtered.length === 0 && <div className="text-center py-12" style={{ color: C.textLow }}>No students found.</div>}
         {filtered.map((s) => (
-          <div key={s.id} className="rounded-xl border-2 p-4 transition-all hover:shadow-md" style={{ borderColor: C.line, background: C.panel, contentVisibility: "auto", containIntrinsicSize: "96px" }}>
+          <div key={s.id} className="rounded-xl border-2 p-4 transition-all hover:shadow-md" style={{ borderColor: C.line, background: C.panel }}>
             <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-4">
               <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0 w-full">
                 <div className="p-3 rounded-lg shrink-0" style={{ background: C.goldSoft }}>
@@ -1211,7 +1210,7 @@ export default function Students() {
                         <Layers size={10} /> {s.batch}
                       </span>
                     )}
-                    {s.faceEnrolled ? (
+                    {s.faceDescriptor ? (
                       <ScanFace size={13} style={{ color: C.teal }} title="Face verified" />
                     ) : (
                       <ScanFace size={13} style={{ color: C.textLow, opacity: 0.4 }} title="Face not verified" />

@@ -235,31 +235,6 @@ async function teacherCanAccessStudent(req, student) {
   return student.active !== false && access.batchNames.includes(student.batch || "");
 }
 
-// GET /api/students/recognition
-// Small, purpose-built payload for face/fingerprint attendance. Keeping biometric
-// descriptors out of the normal Students list avoids sending 128 numbers per
-// student on every admin page load.
-export const recognitionList = asyncHandler(async (req, res) => {
-  let query = { active: true };
-  if (req.user?.role === "teacher") {
-    const access = await getTeacherAccess(req);
-    if (!access) return res.status(403).json({ message: "Teacher profile is not linked to this account" });
-    if (!access.batchNames.length) return res.json([]);
-    query = { active: true, batch: { $in: access.batchNames } };
-  }
-
-  const students = await Student.find(query)
-    .select("_id name faceDescriptor fingerprintId")
-    .lean();
-
-  res.json(students.map((s) => ({
-    _id: s._id,
-    name: s.name,
-    faceDescriptor: s.faceDescriptor || [],
-    fingerprintId: s.fingerprintId || "",
-  })));
-});
-
 // GET /api/students
 export const list = asyncHandler(async (req, res) => {
   // Do NOT generate monthly challans on every page load. The Vercel cron
@@ -292,36 +267,21 @@ export const list = asyncHandler(async (req, res) => {
     })));
   }
 
-  // Keep the normal Students payload lean. In particular, do NOT send the
-  // 128-number face descriptor for every student just to show the small
-  // "face enrolled" icon. Mongo can calculate that boolean server-side.
-  const students = await Student.aggregate([
-    { $match: query },
-    { $sort: { createdAt: -1 } },
-    {
-      $project: {
-        _id: 1, name: 1, email: 1, phone: 1, courseType: 1, courseName: 1, duration: 1,
-        batch: 1, joiningDate: 1, registrationFee: 1, monthlyFee: 1, active: 1,
-        attendancePercent: 1, paymentStatus: 1, timing: 1, fingerprintId: 1,
-        "paymentHistory.amount": 1,
-        "paymentHistory.date": 1,
-        "paymentHistory.challanId": 1,
-        "challans.month": 1,
-        "challans.label": 1,
-        "challans.amount": 1,
-        "challans.paidAmount": 1,
-        "challans.status": 1,
-        "challans.generatedOn": 1,
-        createdAt: 1,
-        faceEnrolled: {
-          $gt: [
-            { $size: { $ifNull: ["$faceDescriptor", []] } },
-            0,
-          ],
-        },
-      },
-    },
-  ]);
+  // The admin list does not need the large photo or attendance-history arrays.
+  // Payment/challan amounts are retained because the page uses them for its
+  // summary cards; full student details are fetched only when a modal opens.
+  const students = await Student.find(query)
+    .select([
+      "_id", "name", "email", "phone", "courseType", "courseName", "duration",
+      "batch", "joiningDate", "registrationFee", "monthlyFee", "active",
+      "attendancePercent", "paymentStatus", "timing", "fingerprintId",
+      "faceDescriptor",
+      "paymentHistory.amount", "paymentHistory.date", "paymentHistory.challanId",
+      "challans.month", "challans.label", "challans.amount", "challans.paidAmount",
+      "challans.status", "challans.generatedOn", "createdAt"
+    ].join(" "))
+    .sort({ createdAt: -1 })
+    .lean();
 
   res.json(students);
 });

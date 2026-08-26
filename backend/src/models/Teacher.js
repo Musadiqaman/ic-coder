@@ -71,7 +71,6 @@ const teacherSchema = new mongoose.Schema(
 teacherSchema.index({ active: 1 });
 teacherSchema.index({ batchIds: 1 });
 teacherSchema.index({ joiningDate: -1 });
-teacherSchema.index({ createdAt: -1 }); // fast newest-first Teachers list
 teacherSchema.index({ "paymentHistory.date": 1 }); // Dashboard cash-out date-range filtering
 teacherSchema.index({ "attendanceHistory.date": 1 }); // Attendance page date lookups
 teacherSchema.index(

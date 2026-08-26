@@ -74,21 +74,6 @@ function reconcileChallan(teacher) {
 
 // ── CRUD Operations ──────────────────────────────────────────────────────
 
-// GET /api/teachers/recognition
-// Minimal biometric payload used only by attendance scanning.
-export const recognitionList = asyncHandler(async (req, res) => {
-  const filter = req.user?.role === "teacher" ? { userId: req.user.id, active: true } : { active: true };
-  const teachers = await Teacher.find(filter)
-    .select("_id name faceDescriptor fingerprintId")
-    .lean();
-  res.json(teachers.map((t) => ({
-    _id: t._id,
-    name: t.name,
-    faceDescriptor: t.faceDescriptor || [],
-    fingerprintId: t.fingerprintId || "",
-  })));
-});
-
 // GET /api/teachers
 export const list = asyncHandler(async (req, res) => {
   const filter = req.user?.role === "teacher" ? { userId: req.user.id } : {};

@@ -4,7 +4,6 @@ import { requireRole } from "../middleware/auth.js";
 
 const router = Router();
 
-router.get("/recognition", studentsController.recognitionList);
 router.get("/", studentsController.list);
 router.get("/:id", studentsController.getOne);
 router.post("/", requireRole("admin"), studentsController.create);

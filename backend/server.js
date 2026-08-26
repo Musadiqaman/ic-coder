@@ -63,11 +63,7 @@ app.post("/api/internal/cron/monthly-challans", async (req, res, next) => {
     return res.json({ ok: true, created });
   } catch (err) { next(err); }
 });
-// Request logging is useful locally but adds synchronous work/noise to every
-// production invocation. Vercel already provides request logs.
-if (!process.env.VERCEL) // Vercel already provides request logs. Avoid extra logger work on every
-// production invocation; keep morgan for local debugging only.
-if (!process.env.VERCEL) app.use(morgan("dev"));
+app.use(morgan("dev"));
 
 let dbPromise;
 function ensureDb() {
@@ -78,8 +74,6 @@ app.use(async (req, res, next) => {
   try { await ensureDb(); next(); } catch (err) { next(err); }
 });
 
-// Health checks do not need MongoDB. Keep them genuinely cheap for Vercel
-// probes and uptime checks.
 app.get("/api/health", (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 
 // Login/logout are public. Account registration is protected inside authRoutes

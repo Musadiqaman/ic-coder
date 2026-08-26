@@ -42,6 +42,5 @@ const projectSchema = new mongoose.Schema(
 
 // --- Indexes ---
 projectSchema.index({ "paymentHistory.date": 1 }); // Dashboard cash-in date-range filtering
-projectSchema.index({ createdAt: -1 }); // fast newest-first Projects list
 
 export default mongoose.model("Project", projectSchema);

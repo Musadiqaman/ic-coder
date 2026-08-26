@@ -12,6 +12,5 @@ const expenseSchema = new mongoose.Schema(
 
 // --- Indexes ---
 expenseSchema.index({ date: -1 }); // Dashboard/reporting date-range filtering + newest-first listing
-expenseSchema.index({ createdAt: -1 }); // fast newest-first Expenses list
 
 export default mongoose.model("Expense", expenseSchema);
