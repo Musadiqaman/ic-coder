@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "builds": [{ "src": "server.js", "use": "@vercel/node" }],
+  "routes": [{ "src": "/(.*)", "dest": "/server.js" }],
+  "crons": [
+    { "path": "/api/internal/cron/auto-attendance", "schedule": "55 18 * * *" },
+    { "path": "/api/internal/cron/monthly-challans", "schedule": "5 19 1 * *" }
+  ]
+}
