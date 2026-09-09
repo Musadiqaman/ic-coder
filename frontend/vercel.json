@@ -5,7 +5,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://backend-two-theta-33.vercel.app/api/:path*"
+      "destination": "https://ic-coder-sw9q.vercel.app/api/:path*"
     },
     {
       "source": "/(.*)",
