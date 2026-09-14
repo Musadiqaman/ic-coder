@@ -328,11 +328,6 @@ export default function Students() {
   const [deletePaymentTarget, setDeletePaymentTarget] = useState(null); // { student, payment }
   const [deletingPayment, setDeletingPayment] = useState(false);
 
-  // Create new batch modal
-  const [createBatchModal, setCreateBatchModal] = useState(false);
-  const [newBatchName, setNewBatchName] = useState("");
-  const [creatingBatch, setCreatingBatch] = useState(false);
-
   // Deactivate/activate confirmation modal
   const [deactivateTarget, setDeactivateTarget] = useState(null);
   const [deactivating, setDeactivating] = useState(false);
@@ -548,39 +543,6 @@ export default function Students() {
         <span style={{ ...fontMono, fontSize: "11px", color: C.textMid }}>{v}%</span>
       </div>
     );
-  };
-
-  const createNewBatch = async () => {
-    if (!newBatchName.trim()) {
-      setToast({ message: "Batch name is required", tone: "error" });
-      return;
-    }
-
-    // Real-time duplicate check BEFORE sending to backend
-    const isDuplicate = batches.some((b) => b.name.toLowerCase() === newBatchName.trim().toLowerCase());
-    if (isDuplicate) {
-      setToast({ message: `Batch "${newBatchName.trim()}" already exists`, tone: "error" });
-      return;
-    }
-
-    setCreatingBatch(true);
-    try {
-      const newBatch = await batchesApi.create({ name: newBatchName.trim() });
-      setBatches((prev) => [...prev, newBatch].sort((a, b) => a.name.localeCompare(b.name)));
-      setForm((prev) => ({ ...prev, batch: newBatch.name }));
-      setNewBatchName(""); // Clear input
-      setCreateBatchModal(false); // Close modal
-      setToast({ message: `Batch "${newBatch.name}" created successfully!`, tone: "success" });
-    } catch (err) {
-      // Handle backend errors (in case of race condition)
-      if (err.message.includes("already exists")) {
-        setToast({ message: `Batch name already exists`, tone: "error" });
-      } else {
-        setToast({ message: err.message, tone: "error" });
-      }
-    } finally {
-      setCreatingBatch(false);
-    }
   };
 
   const handleSubmit = async (e) => {
@@ -1464,21 +1426,13 @@ export default function Students() {
                 <Field label="Batch" C={C}>
                   <CustomSelect
                     value={form.batch}
-                    onChange={(v) => {
-                      if (v === "___create___") {
-                        setCreateBatchModal(true);
-                        setNewBatchName(""); // Always clear on open
-                      } else {
-                        setForm({ ...form, batch: v });
-                      }
-                    }}
+                    onChange={(v) => setForm({ ...form, batch: v })}
                     options={[
                       { value: "", label: "Select batch..." },
                       ...batches.map(b => ({ value: b.name, label: b.name })),
-                      { value: "___create___", label: "+ Create new batch", className: "font-semibold border-t" }
                     ]}
                     C={C}
-                    placeholder="Select or create batch"
+                    placeholder="Select batch"
                   />
                 </Field>
                 <Field label="Duration" C={C}><input value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} className="w-full bg-transparent border-2 rounded-xl px-4 py-3 text-sm transition-colors" style={{ borderColor: C.line, color: C.textHi }} placeholder="6 months" /></Field>
@@ -1788,21 +1742,13 @@ export default function Students() {
                 <Field label="Batch" C={C}>
                   <CustomSelect
                     value={editForm.batch}
-                    onChange={(v) => {
-                      if (v === "___create___") {
-                        setCreateBatchModal(true);
-                        setNewBatchName(""); // Always clear on open
-                      } else {
-                        setEditForm({ ...editForm, batch: v });
-                      }
-                    }}
+                    onChange={(v) => setEditForm({ ...editForm, batch: v })}
                     options={[
                       { value: "", label: "No batch" },
                       ...batches.map(b => ({ value: b.name, label: b.name })),
-                      { value: "___create___", label: "+ Create new batch", className: "font-semibold border-t" }
                     ]}
                     C={C}
-                    placeholder="Select or create batch"
+                    placeholder="Select batch"
                   />
                 </Field>
                 <Field label="Duration" C={C}><input value={editForm.duration} onChange={(e) => setEditForm({ ...editForm, duration: e.target.value })} className="w-full bg-transparent border-2 rounded-xl px-4 py-3 text-sm transition-colors" style={{ borderColor: C.line, color: C.textHi }} /></Field>
@@ -2079,58 +2025,6 @@ export default function Students() {
             <div className="flex gap-3">
               <button onClick={() => setDeletePaymentTarget(null)} className="flex-1 rounded-xl py-2.5 text-sm font-medium border-2 transition-all" style={{ borderColor: C.line, color: C.textMid }}>Cancel</button>
               <button onClick={confirmDeletePayment} disabled={deletingPayment} className="flex-1 rounded-xl py-2.5 text-sm font-semibold transition-all active:scale-95 disabled:opacity-60" style={{ background: C.rose, color: "#fff" }}>{deletingPayment ? "Deleting…" : "Delete"}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {createBatchModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm" style={{ background: C.overlay }}>
-          <div className="modal-in w-full max-w-sm rounded-2xl border-2 p-6" style={{ background: C.panel, borderColor: C.line }}>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2.5 rounded-lg" style={{ background: C.tealSoft }}>
-                <Layers size={18} style={{ color: C.teal }} />
-              </div>
-              <div style={{ ...fontDisplay, fontWeight: 700, color: C.textHi }} className="text-lg">
-                Create New Batch
-              </div>
-            </div>
-            <p className="text-sm mb-4" style={{ color: C.textMid }}>
-              Add a new batch to organize students
-            </p>
-            <input
-              autoFocus
-              type="text"
-              value={newBatchName}
-              onChange={(e) => setNewBatchName(e.target.value)}
-              placeholder="e.g., Batch 2026-A"
-              className="w-full bg-transparent border-2 rounded-xl px-4 py-3 text-sm mb-4 transition-colors"
-              style={{ borderColor: C.line, color: C.textHi }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") createNewBatch();
-              }}
-            />
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setCreateBatchModal(false);
-                  setNewBatchName(""); // Clear input on cancel
-                }}
-                disabled={creatingBatch}
-                className="flex-1 rounded-xl py-2.5 text-sm font-medium border-2 transition-all"
-                style={{ borderColor: C.line, color: C.textMid }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={createNewBatch}
-                disabled={creatingBatch || !newBatchName.trim()}
-                className="flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition-all active:scale-95 disabled:opacity-60"
-                style={{ background: C.teal, color: "#fff" }}
-              >
-                {creatingBatch ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
-                {creatingBatch ? "Creating..." : "Create"}
-              </button>
             </div>
           </div>
         </div>

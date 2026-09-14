@@ -11,6 +11,7 @@ import PageLoader from "./components/PageLoader.jsx";
 // when the user actually navigates to it.
 const Dashboard = lazy(() => import("./pages/Dashboard.jsx"));
 const Students = lazy(() => import("./pages/Students.jsx"));
+const Batches = lazy(() => import("./pages/Batches.jsx"));
 const Employees = lazy(() => import("./pages/Employees.jsx"));
 const Teachers = lazy(() => import("./pages/Teachers.jsx"));
 const Expenses = lazy(() => import("./pages/Expenses.jsx"));
@@ -57,6 +58,7 @@ export default function App() {
               <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
                 <Route index element={<RoleHome />} />
                 <Route path="students" element={<RequireRole roles={["admin"]}><Students /></RequireRole>} />
+                <Route path="batches" element={<RequireRole roles={["admin"]}><Batches /></RequireRole>} />
                 <Route path="employees" element={<RequireRole roles={["admin"]}><Employees /></RequireRole>} />
                 <Route path="teachers" element={<RequireRole roles={["admin"]}><Teachers /></RequireRole>} />
                 <Route path="expenses" element={<RequireRole roles={["admin"]}><Expenses /></RequireRole>} />

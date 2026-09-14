@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   Mic, Users, GraduationCap, Briefcase, Wallet, Menu, X,
   LayoutGrid, ShieldCheck, ScanFace, Sparkles, ArrowDownRight, Sun, Moon, Zap,
-  PanelLeftClose, PanelLeftOpen, LogOut, Settings,
+  PanelLeftClose, PanelLeftOpen, LogOut, Settings, Layers,
 } from "lucide-react";
 import { useTheme, fontDisplay, fontMono, GLOBAL_FONT_IMPORT } from "../theme.jsx";
 import { HeaderActionsProvider, useHeaderActionsSlot } from "../context/HeaderActionsContext.jsx";
@@ -14,6 +14,7 @@ import VoiceAssistant from "./VoiceAssistant.jsx";
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutGrid, end: true },
   { to: "/students", label: "Students", icon: GraduationCap },
+  { to: "/batches", label: "Batches", icon: Layers },
   { to: "/teachers", label: "Teachers", icon: Sparkles },
   { to: "/projects", label: "Projects", icon: Briefcase },
   { to: "/employees", label: "Employees", icon: Users },
@@ -183,6 +184,7 @@ function LayoutInner() {
               >
                 {currentPage === "Dashboard" && <LayoutGrid size={20} style={{ color: C.gold }} />}
                 {currentPage === "Students" && <GraduationCap size={20} style={{ color: C.gold }} />}
+                {currentPage === "Batches" && <Layers size={20} style={{ color: C.gold }} />}
                 {currentPage === "Employees" && <Users size={20} style={{ color: C.gold }} />}
                 {currentPage === "Teachers" && <Sparkles size={20} style={{ color: C.gold }} />}
                 {currentPage === "Expenses" && <ArrowDownRight size={20} style={{ color: C.gold }} />}
